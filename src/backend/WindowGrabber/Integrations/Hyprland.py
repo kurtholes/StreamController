@@ -98,7 +98,7 @@ class WatchForActiveWindowChange(threading.Thread):
     @log.catch
     def run(self) -> None:
         while gl.threads_running:
-            time.sleep(0.2)
+            time.sleep(1.0)  # Reduced from 0.2s to save CPU
             new_active_window = self.hyprland.get_active_window()
             if new_active_window is None:
                 continue
