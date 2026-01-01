@@ -195,8 +195,8 @@ fi
 
 # Install necessary Flatpak runtimes
 echo "Installing flathub runtimes"
-flatpak install runtime/org.gnome.Sdk//46 --system -y
-flatpak install runtime/org.gnome.Platform//46 --system -y
+flatpak install runtime/org.gnome.Sdk//48 --system -y
+flatpak install runtime/org.gnome.Platform//48 --system -y
 
 # Build and install StreamController
 echo "Building flatpak (this will take a while)"
