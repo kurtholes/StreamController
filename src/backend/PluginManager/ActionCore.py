@@ -18,6 +18,7 @@ import time
 from loguru import logger as log
 from copy import copy
 import subprocess
+import shlex
 import os
 from PIL import Image
 import gi
@@ -571,20 +572,25 @@ class ActionCore(rpyc.Service):
         if not os.path.exists(backend_path):
             raise ValueError(f"Backend path does not exist: {backend_path}")
 
+        # Determine the Python interpreter to use
+        if venv_path is not None:
+            python_exec = os.path.join(venv_path, "bin", "python3")
+        else:
+            python_exec = "python3"
+
         ## Launch
         if open_in_terminal:
-            command = "gnome-terminal -- bash -c '"
-            if venv_path is not None:
-                command += f". {venv_path}/bin/activate && "
-            command += f"python3 {backend_path} --port={port}; exec $SHELL'"
+            # Use shlex.quote to safely escape paths for shell
+            safe_python = shlex.quote(python_exec)
+            safe_backend = shlex.quote(backend_path)
+            bash_command = f"{safe_python} {safe_backend} --port={port}; exec $SHELL"
+            command = ["gnome-terminal", "--", "bash", "-c", bash_command]
+            log.info(f"Launching backend in terminal: {command}")
+            subprocess.Popen(command, start_new_session=True)
         else:
-            command = ""
-            if venv_path is not None:
-                command = f". {venv_path}/bin/activate && "
-            command += f"python3 {backend_path} --port={port}"
-
-        log.info(f"Launching backend: {command}")
-        subprocess.Popen(command, shell=True, start_new_session=open_in_terminal)
+            command = [python_exec, backend_path, f"--port={port}"]
+            log.info(f"Launching backend: {command}")
+            subprocess.Popen(command, start_new_session=False)
 
         self.wait_for_backend()
 

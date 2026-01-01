@@ -40,13 +40,18 @@ class Sway(Integration):
     def __init__(self, window_grabber: "WindowGrabber"):
         super().__init__(window_grabber=window_grabber)
 
-        self.command_prefix = ""
+        self.command_prefix: list[str] = []
         if not gl.IS_MAC:
             portal = Xdp.Portal.new()
             if portal.running_under_flatpak():
-                self.command_prefix = "flatpak-spawn --host "
+                self.command_prefix = ["flatpak-spawn", "--host"]
 
         self.start_active_window_change_thread()
+
+    def _run_swaymsg(self, args: list[str]) -> str:
+        """Run swaymsg command safely without shell injection."""
+        command = self.command_prefix + ["swaymsg"] + args
+        return subprocess.check_output(command, text=True, cwd="/").strip()
 
     def start_active_window_change_thread(self):
         self.active_window_change_thread = WatchForActiveWindowChange(self)
@@ -78,8 +83,7 @@ class Sway(Integration):
         windows = []
         try:
             # Run the swaymsg command and capture the output
-            command = "swaymsg -t get_tree"
-            output = subprocess.check_output(f"{self.command_prefix}{command}", shell=True, text=True, cwd="/").strip()
+            output = self._run_swaymsg(["-t", "get_tree"])
             # Parse the JSON output into a Python list
             clients = json.loads(output)
 

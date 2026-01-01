@@ -24,7 +24,7 @@ import webbrowser as web
 
 from GtkHelper.GtkHelper import LoadingScreen
 from autostart import is_flatpak
-from src.backend.DeckManagement.HelperMethods import open_web, run_command
+from src.backend.DeckManagement.HelperMethods import open_web
 from src.windows.Onboarding.PluginRecommendations import PluginRecommendations
 
 gi.require_version("Gtk", "4.0")
@@ -160,13 +160,13 @@ class OnboardingWindow(Adw.Dialog):
             gl.app.permissions.present()
 
     def get_udev_version(self):
-        command = "udevadm --version"
+        command = ["udevadm", "--version"]
 
         if is_flatpak():
-            command = f"flatpak run --command {command}"
+            command = ["flatpak-spawn", "--host"] + command
 
         try:
-            return subprocess.check_output(command, shell=True).decode("utf-8").strip()
+            return subprocess.check_output(command).decode("utf-8").strip()
         except subprocess.CalledProcessError:
             return None
 
@@ -394,7 +394,7 @@ class SupportAppOnboardingScreen(Gtk.Box):
         self.append(self.support_button)
 
     def on_support_button_clicked(self, button):
-        run_command("xdg-open https://ko-fi.com/core447")
+        open_web("https://ko-fi.com/core447")
         # portal = Xdp.Portal.new()
         # portal.open_uri(
         #     parent=XdpGtk4.parent_new_gtk(gl.app.get_active_window()),

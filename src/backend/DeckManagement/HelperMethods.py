@@ -18,7 +18,9 @@ import hashlib
 from io import BytesIO
 import multiprocessing
 import os
+import shlex
 import subprocess
+import webbrowser
 import matplotlib.font_manager
 import sys
 import math
@@ -357,21 +359,58 @@ def sort_times(time_list):
     return sorted(time_list, key=lambda x: datetime.fromisoformat(x))
 
 
-def run_command(command):
-    if command is None:
+def run_command(command: list[str]):
+    """
+    Run a command safely without shell injection vulnerabilities.
+
+    Args:
+        command: List of command arguments (e.g., ["ls", "-la"])
+    """
+    if command is None or not command:
         return
 
-    if is_flatpak():
-        command = "flatpak-spawn --host " + command
+    if not isinstance(command, list):
+        raise TypeError("command must be a list of strings")
 
-    p = multiprocessing.Process(target=subprocess.Popen, args=[command], kwargs={
-                                "shell": True, "start_new_session": True, "stdin": subprocess.DEVNULL, "stdout": subprocess.DEVNULL, "stderr": subprocess.DEVNULL, "cwd": os.path.expanduser("~")})
+    if is_flatpak():
+        command = ["flatpak-spawn", "--host"] + command
+
+    def _run():
+        subprocess.Popen(
+            command,
+            shell=False,
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            cwd=os.path.expanduser("~")
+        )
+
+    p = multiprocessing.Process(target=_run)
     p.start()
 
-def open_web(url):
-    if not url.startswith("http"):
+
+def open_web(url: str):
+    """
+    Open a URL in the default web browser safely.
+
+    Args:
+        url: The URL to open (must be http:// or https://)
+    """
+    if not url:
+        return
+
+    # Validate and normalize URL scheme
+    if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
-    run_command(f"xdg-open {url}")
+
+    # Validate URL scheme is safe (only http/https allowed)
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https"):
+        return
+
+    # Use webbrowser module for safe URL opening
+    webbrowser.open(url)
 
 def svg_string_to_pil(svg_string, width: int = 96, height: int = 96):
     """

@@ -41,14 +41,19 @@ class Hyprland(Integration):
     def __init__(self, window_grabber: "WindowGrabber"):
         super().__init__(window_grabber=window_grabber)
 
-        self.command_prefix = ""
+        self.command_prefix: list[str] = []
         if not gl.IS_MAC:
             portal = Xdp.Portal.new()
             if portal.running_under_flatpak():
-                self.command_prefix = "flatpak-spawn --host "
+                self.command_prefix = ["flatpak-spawn", "--host"]
 
         self.start_active_window_change_thread()
-        
+
+    def _run_hyprctl(self, args: list[str]) -> str:
+        """Run hyprctl command safely without shell injection."""
+        command = self.command_prefix + ["hyprctl"] + args
+        return subprocess.check_output(command, text=True, cwd="/").strip()
+
     def start_active_window_change_thread(self):
         self.active_window_change_thread = WatchForActiveWindowChange(self)
         self.active_window_change_thread.start()
@@ -57,7 +62,7 @@ class Hyprland(Integration):
         windows: list[Window] = []
         try:
             # Run the hyprctl command and capture the output
-            output = subprocess.check_output(f"{self.command_prefix}hyprctl clients -j", shell=True, text=True, cwd="/").strip()
+            output = self._run_hyprctl(["clients", "-j"])
             # Parse the JSON output into a Python list
             clients = json.loads(output)
 
@@ -71,11 +76,11 @@ class Hyprland(Integration):
             log.error(f"Failed to parse JSON: {e}")
 
         return windows
-    
-    def get_active_window (self) -> Window:
+
+    def get_active_window(self) -> Window:
         try:
             # Run the hyprctl command and capture the output
-            output = subprocess.check_output(f"{self.command_prefix}hyprctl activewindow -j", shell=True, text=True, cwd="/").strip()
+            output = self._run_hyprctl(["activewindow", "-j"])
             # Parse the JSON output into a Python list
             client = json.loads(output)
 

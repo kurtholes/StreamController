@@ -233,15 +233,17 @@ class DevPageGroup(Adw.PreferencesGroup):
         gl.settings_manager.save_static_settings(static_settings)
 
     def on_open_data_path_button_clicked(self, *args):
-        command = ""
-        if is_flatpak():
-            command += "flatpak-spawn --host "
+        data_path = self.data_path.get_text()
+        if not data_path:
+            return
 
-        command += f"xdg-open {self.data_path.get_text()}"
+        command = ["xdg-open", data_path]
+        if is_flatpak():
+            command = ["flatpak-spawn", "--host"] + command
 
         try:
-            subprocess.check_output(command, shell=True)
-        except subprocess.CalledProcessError:
+            subprocess.run(command, check=False, capture_output=True)
+        except (subprocess.SubprocessError, OSError):
             pass
 
 

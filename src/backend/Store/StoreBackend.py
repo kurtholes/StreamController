@@ -50,6 +50,32 @@ import globals as gl
 from src.windows.Store.StoreData import PluginData, IconData, WallpaperData
 
 
+def safe_extract_zip(zip_path: str, dest_dir: str) -> None:
+    """
+    Safely extract a ZIP file, preventing path traversal attacks.
+
+    Args:
+        zip_path: Path to the ZIP file
+        dest_dir: Destination directory for extraction
+
+    Raises:
+        ValueError: If a malicious path is detected in the ZIP
+    """
+    dest_dir = os.path.abspath(dest_dir)
+
+    with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+        for member in zip_ref.namelist():
+            # Get the absolute path where this member would be extracted
+            member_path = os.path.abspath(os.path.join(dest_dir, member))
+
+            # Verify the path is within the destination directory
+            if not member_path.startswith(dest_dir + os.sep) and member_path != dest_dir:
+                raise ValueError(f"Path traversal detected in ZIP: {member}")
+
+        # All paths are safe, extract
+        zip_ref.extractall(dest_dir)
+
+
 class NoConnectionError:
     pass
 
@@ -653,11 +679,8 @@ class StoreBackend:
         return available_versions[max_index]
 
     ## Install
-    async def subp_call(self, args):
-        return subprocess.call(args)
-    
-    async def os_sys(self, args):
-        return os.system(args)
+    async def subp_call(self, args, cwd=None):
+        return subprocess.call(args, cwd=cwd)
     
     def get_main_folder_of_zip(self, zip_path: str) -> str:
         extracted_folder_name = None
@@ -704,10 +727,10 @@ class StoreBackend:
             log.error(e)
             return NoConnectionError()
         
-        ## Extract
+        ## Extract (using safe extraction to prevent path traversal)
         if os.path.exists(os.path.join(gl.DATA_PATH, "cache", f"{projectname}-{sha}")):
             shutil.rmtree(os.path.join(gl.DATA_PATH, "cache", f"{projectname}-{sha}"))
-        shutil.unpack_archive(os.path.join(gl.DATA_PATH, "cache", f"{projectname}-{sha}.zip"), os.path.join(gl.DATA_PATH, "cache"))
+        safe_extract_zip(os.path.join(gl.DATA_PATH, "cache", f"{projectname}-{sha}.zip"), os.path.join(gl.DATA_PATH, "cache"))
 
 
         ## Why - because github is not case sensitive for the urls, so the casing of the zip file might be different than the one of the contained folder
@@ -764,7 +787,7 @@ class StoreBackend:
         await self.subp_call(["git", "config", "--global", "--add", "safe.directory", os.path.abspath(local_path)])
 
         # Run git pull to create .git/FETCH_HEAD. This allows us to check for available updates
-        await self.os_sys(f"cd '{local_path}' && git pull")
+        await self.subp_call(["git", "pull"], cwd=local_path)
 
 
         ## Write version
@@ -774,11 +797,11 @@ class StoreBackend:
 
         # Set repository to the given commit_sha
         if commit_sha is not None:
-            await self.os_sys(f"cd '{local_path}' && git reset --hard {commit_sha}")
+            await self.subp_call(["git", "reset", "--hard", commit_sha], cwd=local_path)
             return
-        
+
         if branch_name is not None:
-            await self.os_sys(f"cd '{local_path}' && git switch {branch_name}")
+            await self.subp_call(["git", "switch", branch_name], cwd=local_path)
             return
         
         
@@ -790,12 +813,14 @@ class StoreBackend:
         response = await self.download_repo(repo_url=url, directory=local_path, commit_sha=plugin_data.commit_sha, branch_name=plugin_data.branch)
 
         # Run install script if present. Make sure to use python binary used to run this process to not break venv dependency installations
-        if os.path.isfile(os.path.join(local_path, "__install__.py")):
-            subprocess.run(f"{sys.executable} {os.path.join(local_path, '__install__.py')}", shell=True, start_new_session=True)
+        install_script = os.path.join(local_path, "__install__.py")
+        if os.path.isfile(install_script):
+            subprocess.run([sys.executable, install_script], start_new_session=True)
 
         # Install requirements from requirements.txt
-        if os.path.isfile(os.path.join(local_path, "requirements.txt")):
-            subprocess.run(f"{sys.executable} -m pip install -r {os.path.join(local_path, 'requirements.txt')}", shell=True, start_new_session=True)
+        requirements_file = os.path.join(local_path, "requirements.txt")
+        if os.path.isfile(requirements_file):
+            subprocess.run([sys.executable, "-m", "pip", "install", "-r", requirements_file], start_new_session=True)
 
         if response == 404:
             return 404
