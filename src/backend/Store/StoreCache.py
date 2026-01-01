@@ -2,6 +2,7 @@ import json
 import os
 import threading
 import time
+from typing import IO
 from loguru import logger as log
 
 import globals as gl
@@ -114,7 +115,8 @@ class StoreCache:
         
         return os.path.exists(self.files[cache_string].get("path"))
 
-    def open_cache_file(self, url: str, path: str, branch: str = "main", data_type: str = "text", mode: str = "r") -> str:
+    def open_cache_file(self, url: str, path: str, branch: str = "main", data_type: str = "text", mode: str = "r") -> IO:
+        """Open a cache file. Caller should use 'with' statement to ensure proper cleanup."""
         cache_path = self.get_cache_path(url, path, branch, data_type)
         os.makedirs(os.path.dirname(cache_path), exist_ok=True)
 
@@ -123,5 +125,5 @@ class StoreCache:
             "date": time.time()
         }
         self.set_files(self.files)
-        
+
         return open(cache_path, mode)

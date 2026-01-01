@@ -60,19 +60,21 @@ class BackgroundVideoCache:
         # Check if cache is available (video may have been closed)
         if not hasattr(self, 'cache') or self.cache is None:
             return [self.deck_controller.generate_alpha_key() for _ in range(self.deck_controller.deck.key_count())]
-        
+
         n = min(n, self.n_frames - 1)
         tiles = None
+        cached_result = None
+
         with self.lock:
             if self.is_cache_complete():
                 self.cap.release()
                 return self.cache.get(n, None)
-            
+
             # Otherwise, continue with video capture
             # Check if the frame is already decoded
             if n in self.cache:
                 return self.cache[n]
-            
+
             # If the requested frame is before the last decoded one, reset the capture
             if n < self.last_frame_index:
                 self.cap.set(cv2.CAP_PROP_POS_FRAMES, n)
@@ -84,8 +86,8 @@ class BackgroundVideoCache:
                 if not success:
                     break  # Reached the end of the video
                 self.last_frame_index += 1
-                
-                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  
+
+                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 pil_image = Image.fromarray(frame_rgb)
 
                 # Resize the image
@@ -103,21 +105,22 @@ class BackgroundVideoCache:
                 if self.do_caching and self.cache is not None:
                     self.cache[self.last_frame_index] = tiles
                 self.last_tiles = tiles
-                
 
                 full_sized.close()
                 pil_image.close()
 
+            # Get fallback and cached result while still under lock
+            if len(self.last_tiles) > 0:
+                tiles = self.last_tiles
+            if tiles is None:
+                tiles = [self.deck_controller.generate_alpha_key() for _ in range(self.deck_controller.deck.key_count())]
 
-        # Return the last decoded frame if the nth frame is not available
-        if len(self.last_tiles) > 0:
-            tiles = self.last_tiles
-        if tiles is None:
-            tiles = [self.deck_controller.generate_alpha_key() for _ in range(self.deck_controller.deck.key_count())]
-        
-        if self.cache is not None:
-            return self.cache.get(n, tiles)
-        return tiles
+            if self.cache is not None:
+                cached_result = self.cache.get(n, tiles)
+            else:
+                cached_result = tiles
+
+        return cached_result
     
     def create_full_deck_sized_image(self, frame: Image.Image) -> Image.Image:
         key_width, key_height = self.key_size

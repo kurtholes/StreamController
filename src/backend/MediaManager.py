@@ -88,14 +88,10 @@ class MediaManager:
     def generate_gif_thumbnail(self, file_path):
         # This is the same as load_video but with transparency support
         gif = Image.open(file_path)
-        iterator = ImageSequence.Iterator(gif)
-        n_frames = 0
-        for frame in iterator: n_frames += 1 #TODO: Find a better way to do this
-        frame = iterator[n_frames // 2] # Gifs tend to have a empty frame at the beginning
-        frame = frame.convert("RGBA")
-
-        gif = None
-        iterator = None
-        n_frames = None
-
+        n_frames = getattr(gif, 'n_frames', 1)
+        # Seek to middle frame (GIFs tend to have empty frame at beginning)
+        middle_frame = n_frames // 2
+        gif.seek(middle_frame)
+        frame = gif.copy().convert("RGBA")
+        gif.close()
         return frame

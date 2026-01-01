@@ -106,16 +106,9 @@ class DeckManager:
         if n_fake_decks > old_n_fake_decks:
             log.info(f"Loading {n_fake_decks - old_n_fake_decks} fake deck(s)")
             # Load difference in number of fake decks
-            for controller in range(n_fake_decks - old_n_fake_decks):
-                a = f"Fake Deck {len(self.fake_deck_controller)+1}"
-                fake_deck = FakeDeck(serial_number = f"fake-deck-{len(self.fake_deck_controller)+1}", deck_type=f"Fake Deck {len(self.fake_deck_controller)+1}")
+            for _ in range(n_fake_decks - old_n_fake_decks):
+                fake_deck = FakeDeck(serial_number=f"fake-deck-{len(self.fake_deck_controller)+1}", deck_type=f"Fake Deck {len(self.fake_deck_controller)+1}")
                 self.add_newly_connected_deck(fake_deck, is_fake=True)
-
-            # Update header deck switcher if the new deck is the only one
-            if len(self.deck_controller) == 1 and False:
-                # Check if ui is loaded - if not it will grab the controller automatically
-                if recursive_hasattr(gl, "app.main_win.header_bar.deckSwitcher"):
-                    gl.app.main_win.header_bar.deckSwitcher.set_show_switcher(True)
 
         elif n_fake_decks < old_n_fake_decks:
             # Remove difference in number of fake decks
@@ -128,11 +121,6 @@ class DeckManager:
                 # Remove deck page on stack
                 gl.app.main_win.leftArea.deck_stack.remove_page(controller)
 
-            # Update header deck switcher if there are no more decks
-            if len(self.deck_controller) == 0 and False:
-                # Check if ui is loaded - if not it will grab the controller automatically
-                if recursive_hasattr(gl, "app.main_win.header_bar.deckSwitcher"):
-                    gl.app.main_win.header_bar.deckSwitcher.set_show_switcher(False)
         if hasattr(gl.app, "main_win"):
             gl.app.main_win.check_for_errors()
 
@@ -145,10 +133,8 @@ class DeckManager:
         self.connect_new_decks()
 
     def connect_new_decks(self):
-        # Get already loaded deck serial ids
-        loaded_deck_ids = []
-        for controller in self.deck_controller:
-            loaded_deck_ids.append(controller.deck.id())
+        # Get already loaded deck serial ids (use set for O(1) lookup)
+        loaded_deck_ids = {controller.deck.id() for controller in self.deck_controller}
 
         for deck in DeviceManager().enumerate():
             if deck.id() in loaded_deck_ids:

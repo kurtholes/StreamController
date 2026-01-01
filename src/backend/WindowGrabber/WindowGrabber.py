@@ -121,6 +121,8 @@ class WindowGrabber:
                         return
                     if deck_controller.serial_number() not in decks:
                         continue
+                    if deck_controller.active_page is None:
+                        continue
 
                     if deck_controller.active_page.json_path != page_path:
                         log.debug(f"Auto changing page: {page_path} on deck {deck_controller.deck.get_serial_number()}")
@@ -141,6 +143,8 @@ class WindowGrabber:
                     return
 
                 if deck_controller.page_auto_loaded:
+                    if deck_controller.active_page is None:
+                        continue
                     active_page_change_info = gl.page_manager.get_auto_change_settings(deck_controller.active_page.json_path)
                     if active_page_change_info.get("stay-on-page", True):
                         continue
