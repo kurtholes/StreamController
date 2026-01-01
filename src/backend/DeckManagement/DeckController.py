@@ -167,16 +167,40 @@ class MediaPlayerThread(threading.Thread):
 
         self.show_fps_warnings = gl.settings_manager.get_app_settings().get("warnings", {}).get("enable-fps-warnings", True)
 
+    def has_active_media(self) -> bool:
+        """Check if there's any active media that needs updating at 30 FPS."""
+        # Check for background video
+        if self.deck_controller.background.video is not None:
+            if self.deck_controller.background.video.page is self.deck_controller.active_page:
+                return True
+
+        # Check for key videos or scrolling labels
+        for key in self.deck_controller.inputs.get(Input.Key, []):
+            state = key.get_active_state()
+            if state.key_video or state.label_manager.get_has_scroll_labels():
+                return True
+
+        # Check for dial videos or scrolling labels
+        for dial in self.deck_controller.inputs.get(Input.Dial, []):
+            state = dial.get_active_state()
+            if state.video or state.label_manager.get_has_scroll_labels():
+                return True
+
+        return False
+
     # @log.catch
     def run(self):
         self.running = True
+        self.IDLE_FPS = 2  # Check for new media twice per second when idle
 
         while True:
             start = time.time()
 
-            # self.check_connection()
+            # Check if there's active media or pending tasks
+            has_media = self.has_active_media()
+            has_tasks = bool(self.tasks) or bool(self.image_tasks) or self.touchscreen_task is not None
 
-            if not self.pause:
+            if not self.pause and (has_media or has_tasks):
                 if self.deck_controller.background.video is not None:
                     if self.deck_controller.background.video.page is self.deck_controller.active_page:
                         # There is a background video
@@ -195,15 +219,17 @@ class MediaPlayerThread(threading.Thread):
                 # Perform media player tasks
                 self.perform_media_player_tasks()
 
-            self.media_ticks += 1
+                self.media_ticks += 1
 
-            # Wait for approximately 1/30th of a second before the next call
-            end = time.time()
-            # print(f"possible FPS: {1 / (end - start)}")
-            self.append_fps(1 / (end - start))
-            self.update_low_fps_warning()
-            wait = max(0, 1/self.FPS - (end - start))
-            time.sleep(wait)
+                # Wait for approximately 1/30th of a second before the next call
+                end = time.time()
+                self.append_fps(1 / (end - start))
+                self.update_low_fps_warning()
+                wait = max(0, 1/self.FPS - (end - start))
+                time.sleep(wait)
+            else:
+                # Idle mode - sleep longer to save CPU
+                time.sleep(1/self.IDLE_FPS)
 
             if self._stop:
                 break
