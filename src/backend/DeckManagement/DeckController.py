@@ -200,6 +200,9 @@ class MediaPlayerThread(threading.Thread):
             has_media = self.has_active_media()
             has_tasks = bool(self.tasks) or bool(self.image_tasks) or self.touchscreen_task is not None
 
+            # Always increment media_ticks (needed by clear_media_player_tasks)
+            self.media_ticks += 1
+
             if not self.pause and (has_media or has_tasks):
                 if self.deck_controller.background.video is not None:
                     if self.deck_controller.background.video.page is self.deck_controller.active_page:
@@ -218,8 +221,6 @@ class MediaPlayerThread(threading.Thread):
 
                 # Perform media player tasks
                 self.perform_media_player_tasks()
-
-                self.media_ticks += 1
 
                 # Wait for approximately 1/30th of a second before the next call
                 end = time.time()
