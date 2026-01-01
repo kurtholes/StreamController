@@ -400,11 +400,17 @@ def open_web(url: str):
     if not url:
         return
 
+    # Check for dangerous schemes BEFORE adding https:// prefix
+    # This prevents file://, javascript:, data:, etc.
+    dangerous_schemes = ("file:", "javascript:", "data:", "vbscript:", "ftp:", "ftps:")
+    if url.lower().startswith(dangerous_schemes):
+        return
+
     # Validate and normalize URL scheme
     if not url.startswith(("http://", "https://")):
         url = f"https://{url}"
 
-    # Validate URL scheme is safe (only http/https allowed)
+    # Final validation - ensure scheme is safe
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         return
