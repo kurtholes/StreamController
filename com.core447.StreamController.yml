@@ -94,7 +94,7 @@ modules:
       - install -D flatpak/com.core447.StreamController.metainfo.xml /app/share/metainfo/com.core447.StreamController.metainfo.xml
     sources:
       - type: git
-        url: https://github.com/StreamController/StreamController.git
+        url: https://github.com/kurtholes/StreamController.git
         branch: main
 
 # Install via: flatpak-builder --repo=repo --force-clean --install --user build-dir com.core447.StreamController.yml
