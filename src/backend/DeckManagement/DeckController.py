@@ -349,6 +349,9 @@ class DeckController:
             self.inputs[i] = []
         self.init_inputs()
 
+        # Thread pool for action ticks - avoids creating thousands of threads
+        self.tick_executor = ThreadPoolExecutor(max_workers=4, thread_name_prefix="action_tick")
+
         self.background = Background(self)
 
         self.deck.set_key_callback(self.key_event_callback)
@@ -882,6 +885,10 @@ class DeckController:
 
         self.keep_actions_ticking = False
         self.deck.run_read_thread = False
+
+        # Shut down the thread pool
+        if hasattr(self, "tick_executor"):
+            self.tick_executor.shutdown(wait=False)
 
     def get_alive(self) -> bool:
         try:
@@ -1702,10 +1709,12 @@ class ControllerInputState:
         threading.Thread(target=self.own_actions_ready, name="own_actions_ready").start()
 
     def own_actions_update_threaded(self) -> None:
-        threading.Thread(target=self.own_actions_update, name="own_actions_update").start()
+        executor = self.controller_input.deck_controller.tick_executor
+        executor.submit(self.own_actions_update)
 
     def own_actions_tick_threaded(self) -> None:
-        threading.Thread(target=self.own_actions_tick, name="own_actions_tick").start()
+        executor = self.controller_input.deck_controller.tick_executor
+        executor.submit(self.own_actions_tick)
 
     def own_actions_event_callback_threaded(self, event: InputEvent, data: dict = None, show_notifications: bool = False) -> None:
         threading.Thread(target=self.own_actions_event_callback, args=(event, data, show_notifications), name="own_actions_event_callback").start()
