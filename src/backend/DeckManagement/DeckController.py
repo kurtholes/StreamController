@@ -32,8 +32,13 @@ from loguru import logger as log
 
 # Import own modules
 from src.backend.DeckManagement.BetterDeck import BetterDeck
-from src.backend.DeckManagement.HelperMethods import *
-from src.backend.DeckManagement.ImageHelpers import *
+from src.backend.DeckManagement.HelperMethods import (
+    recursive_hasattr,
+    is_video,
+    is_image,
+    is_svg,
+    svg_to_pil,
+)
 from src.backend.DeckManagement.InputIdentifier import Input, InputEvent, InputIdentifier
 from src.backend.DeckManagement.Subclasses.ActionPermissionManager import ActionPermissionManager
 from src.backend.DeckManagement.Subclasses.FakeDeck import FakeDeck
@@ -66,6 +71,38 @@ if TYPE_CHECKING:
 import globals as gl
 
 
+# Shared failure tracking for transport errors
+_transport_failure_counts: dict[str, int] = {}
+MAX_TRANSPORT_FAILURES = 5
+
+
+def handle_transport_error(deck_controller: "DeckController", error_context: str) -> bool:
+    """
+    Handle transport errors by tracking failures and disconnecting after threshold.
+
+    Returns True if the deck was disconnected due to too many failures.
+    """
+    serial = deck_controller.serial_number()
+    _transport_failure_counts.setdefault(serial, 0)
+    _transport_failure_counts[serial] += 1
+
+    if _transport_failure_counts[serial] > MAX_TRANSPORT_FAILURES:
+        log.debug(f"Failed {error_context} {MAX_TRANSPORT_FAILURES} times in a row for deck {serial}. Removing controller")
+
+        deck_controller.deck.close()
+        deck_controller.media_player.running = False
+        gl.deck_manager.remove_controller(deck_controller)
+        gl.deck_manager.connect_new_decks()
+        return True
+    return False
+
+
+def reset_transport_failure_count(deck_controller: "DeckController"):
+    """Reset the failure counter after a successful operation."""
+    serial = deck_controller.serial_number()
+    _transport_failure_counts[serial] = 0
+
+
 @dataclass
 class MediaPlayerTask:
     deck_controller: "DeckController"
@@ -83,31 +120,18 @@ class MediaPlayerSetTouchscreenImageTask:
     page: Page
     native_image: bytes
 
-    n_failed_in_row: ClassVar[dict] = {}
-
     def run(self):
         if not self.deck_controller.deck.is_touch():
             return
         try:
             touchscreen_size = self.deck_controller.get_touchscreen_image_size()
-            self.deck_controller.deck.set_touchscreen_image(self.native_image, x_pos=0, y_pos=0, width=touchscreen_size[0], height=touchscreen_size[1]) # Maybe avoid to always merge the dial images before applying it
+            self.deck_controller.deck.set_touchscreen_image(self.native_image, x_pos=0, y_pos=0, width=touchscreen_size[0], height=touchscreen_size[1])
             self.native_image = None
             del self.native_image
-            MediaPlayerSetTouchscreenImageTask.n_failed_in_row[self.deck_controller.serial_number()] = 0
+            reset_transport_failure_count(self.deck_controller)
         except StreamDeck.TransportError as e:
             log.error(f"Failed to set deck touchscreen image. Error: {e}")
-            serial = self.deck_controller.serial_number()
-            MediaPlayerSetTouchscreenImageTask.n_failed_in_row.setdefault(serial, 0)
-            MediaPlayerSetTouchscreenImageTask.n_failed_in_row[serial] += 1
-            if MediaPlayerSetTouchscreenImageTask.n_failed_in_row[serial] > 5:
-                log.debug(f"Failed to set touchscreen image for 5 times in a row for deck {self.deck_controller.serial_number()}. Removing controller")
-                
-                
-                self.deck_controller.deck.close()
-                self.deck_controller.media_player.running = False # Set stop flag - otherwise remove_controller will wait until this task is done, which it never will because it waits
-                gl.deck_manager.remove_controller(self.deck_controller)
-
-                gl.deck_manager.connect_new_decks()
+            handle_transport_error(self.deck_controller, "to set touchscreen image")
 
 @dataclass
 class MediaPlayerSetImageTask:
@@ -116,14 +140,12 @@ class MediaPlayerSetImageTask:
     key_index: int
     native_image: bytes
 
-    n_failed_in_row: ClassVar[dict] = {}
-
     def run(self):
         try:
             self.deck_controller.deck.set_key_image(self.key_index, self.native_image)
             self.native_image = None
             del self.native_image
-            MediaPlayerSetImageTask.n_failed_in_row[self.deck_controller.serial_number()] = 0
+            reset_transport_failure_count(self.deck_controller)
         except StreamDeck.TransportError as e:
             log.error(f"Failed to set deck key image. Error: {e}")
 
@@ -131,18 +153,7 @@ class MediaPlayerSetImageTask:
             if beta_resume:
                 return
 
-            serial = self.deck_controller.serial_number()
-            MediaPlayerSetImageTask.n_failed_in_row.setdefault(serial, 0)
-            MediaPlayerSetImageTask.n_failed_in_row[serial] += 1
-            if MediaPlayerSetImageTask.n_failed_in_row[serial] > 5:
-                log.debug(f"Failed to set key_image for 5 times in a row for deck {self.deck_controller.serial_number()}. Removing controller")
-                
-                
-                self.deck_controller.deck.close()
-                self.deck_controller.media_player.running = False # Set stop flag - otherwise remove_controller will wait until this task is done, which it never will because it waits
-                gl.deck_manager.remove_controller(self.deck_controller)
-
-                gl.deck_manager.connect_new_decks()
+            handle_transport_error(self.deck_controller, "to set key image")
 
 
 class MediaPlayerThread(threading.Thread):
@@ -327,16 +338,8 @@ class MediaPlayerThread(threading.Thread):
         try:
             self.deck_controller.deck.get_firmware_version()
         except StreamDeck.TransportError as e:
-            log.error(f"Seams like the deck is not connected. Error: {e}")
-            MediaPlayerSetImageTask.n_failed_in_row[self.deck_controller.serial_number()] += 1
-            if MediaPlayerSetImageTask.n_failed_in_row[self.deck_controller.serial_number()] > 5:
-                log.debug(f"Failed to contact the deck 5 times in a row: {self.deck_controller.serial_number()}. Removing controller")
-                
-                self.deck_controller.deck.close()
-                self.deck_controller.media_player.running = False # Set stop flat - otherwise remove_controller will wait until this task is done, which it never will because it waiuts
-                gl.deck_manager.remove_controller(self.deck_controller)
-
-                gl.deck_manager.connect_new_decks()
+            log.error(f"Seems like the deck is not connected. Error: {e}")
+            handle_transport_error(self.deck_controller, "to contact the deck")
 
 class DeckController:
     def __init__(self, deck_manager: "DeckManager", deck: StreamDeck.StreamDeck):
@@ -723,10 +726,6 @@ class DeckController:
                 return
         
         old_path = self.active_page.json_path if self.active_page is not None else None
-
-        if self.active_page is not None and False:
-            self.active_page.clear_action_objects()
-        # self.active_page = None
 
         self.active_page = page
 
@@ -2269,14 +2268,6 @@ class ControllerKey(ControllerInput):
                 )
                 state.layout_manager.set_page_layout(layout, update=False)
 
-            elif len(state.get_own_actions()) > 1 and False: # Disabled for now - we might reuse it later
-                if state_dict.get("image-control-action") is None:
-                    with Image.open(os.path.join("Assets", "images", "multi_action.png")) as image:
-                        self.set_key_image(InputImage(
-                            controller_input=self,
-                            image=image.copy(),
-                        ), update=False)
-            
             elif len(state.get_own_actions()) == 1:
                 if state_dict.get("image-control-action") is None:
                     self.set_key_image(None, update=False)

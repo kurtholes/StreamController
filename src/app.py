@@ -267,18 +267,21 @@ class App(Adw.Application):
 
     @log.catch
     def _install_plugin(self, plugin_id: str):
-        plugin = asyncio.run(gl.store_backend.get_plugin_for_id(plugin_id=plugin_id))
+        async def _do_install():
+            plugin = await gl.store_backend.get_plugin_for_id(plugin_id=plugin_id)
+            if plugin is None:
+                return None, False
+            success = await gl.store_backend.install_plugin(plugin)
+            return plugin, success
 
         self.set_working(True)
+
+        plugin, success = asyncio.run(_do_install())
 
         if plugin is None:
             gl.app.send_notification("dialog-information-symbolic", "Failed to install plugin",
                                      f"The plugin {plugin_id} could not be installed")
-            self.set_working(False)
-            return
-        
-        success = asyncio.run(gl.store_backend.install_plugin(plugin))
-        if not success:
+        elif not success:
             gl.app.send_notification("dialog-information-symbolic", "Failed to install plugin",
                                      f"The plugin {plugin_id} could not be installed")
         else:
