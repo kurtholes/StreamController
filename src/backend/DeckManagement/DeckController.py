@@ -29,6 +29,7 @@ from PIL import Image, ImageDraw, ImageFont, ImageSequence
 from StreamDeck.Devices import StreamDeck
 from StreamDeck.Devices.StreamDeck import DialEventType, TouchscreenEventType
 from StreamDeck.Devices.StreamDeckPlus import StreamDeckPlus
+from StreamDeck.ImageHelpers import PILHelper
 from loguru import logger as log
 
 # Import own modules

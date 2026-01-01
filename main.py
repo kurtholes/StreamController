@@ -209,22 +209,31 @@ def update_assets():
 def reset_all_decks():
     # Find all USB devices
     devices = usb.core.find(find_all=True, idVendor=DeviceManager.USB_VID_ELGATO)
+
+    # Build list of known StreamDeck PIDs (some may not exist in older library versions)
+    known_pids = []
+    pid_names = [
+        'USB_PID_STREAMDECK_ORIGINAL',
+        'USB_PID_STREAMDECK_ORIGINAL_V2',
+        'USB_PID_STREAMDECK_MINI',
+        'USB_PID_STREAMDECK_XL',
+        'USB_PID_STREAMDECK_MK2',
+        'USB_PID_STREAMDECK_PEDAL',
+        'USB_PID_STREAMDECK_PLUS',
+        'USB_PID_STREAMDECK_MK2_SCISSOR',
+        'USB_PID_STREAMDECK_MK2_MODULE',
+        'USB_PID_STREAMDECK_MINI_MK2_MODULE',
+        'USB_PID_STREAMDECK_XL_V2_MODULE',
+    ]
+    for name in pid_names:
+        pid = getattr(DeviceManager, name, None)
+        if pid is not None:
+            known_pids.append(pid)
+
     for device in devices:
         try:
             # Check if it's a StreamDeck
-            if device.idProduct in [
-                DeviceManager.USB_PID_STREAMDECK_ORIGINAL,
-                DeviceManager.USB_PID_STREAMDECK_ORIGINAL_V2,
-                DeviceManager.USB_PID_STREAMDECK_MINI,
-                DeviceManager.USB_PID_STREAMDECK_XL,
-                DeviceManager.USB_PID_STREAMDECK_MK2,
-                DeviceManager.USB_PID_STREAMDECK_PEDAL,
-                DeviceManager.USB_PID_STREAMDECK_PLUS,
-                DeviceManager.USB_PID_STREAMDECK_MK2_SCISSOR,
-                DeviceManager.USB_PID_STREAMDECK_MK2_MODULE,
-                DeviceManager.USB_PID_STREAMDECK_MINI_MK2_MODULE,
-                DeviceManager.USB_PID_STREAMDECK_XL_V2_MODULE,
-            ]:
+            if device.idProduct in known_pids:
                 # Reset deck
                 usb.util.dispose_resources(device)
                 device.reset()
