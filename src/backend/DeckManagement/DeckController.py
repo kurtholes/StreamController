@@ -14,6 +14,7 @@ along with this program. If not, see <https://www.gnu.org/licenses/>.
 """
 import gc
 import statistics
+import sys
 import threading
 import time
 # Import Python modules
