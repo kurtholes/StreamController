@@ -642,8 +642,8 @@ class Page:
 
             try:
                 value = value.get(key, fallback)
-            except:
-                return
+            except (AttributeError, TypeError):
+                return None
         return value
     
     def _set_dict_value(self, keys: list[str], value):

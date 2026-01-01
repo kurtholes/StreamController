@@ -93,8 +93,8 @@ class DeckManager:
             try:
                 if not deck.is_open():
                     deck.open(self.beta_resume_mode)
-            except:
-                log.error("Failed to open deck. Maybe it's already connected to another instance?")
+            except (OSError, IOError) as e:
+                log.error(f"Failed to open deck: {e}. Maybe it's already connected to another instance?")
                 continue
             deck_controller = DeckController(self, deck)
             self.deck_controller.append(deck_controller)
@@ -237,18 +237,20 @@ class DeckManager:
                     # Reset deck
                     usb.util.dispose_resources(device)
                     device.reset()
-            except:
-                log.error("Failed to reset deck, maybe it's already connected to another instance? Skipping...")
+            except (usb.core.USBError, OSError) as e:
+                log.error(f"Failed to reset deck: {e}. Maybe it's already connected to another instance? Skipping...")
 
     def get_device_by_serial(self, serial: str):
         for deck in DeviceManager().enumerate():
             if not deck.is_open():
                 try:
                     deck.open()
-                except:
-                    return
+                except (OSError, IOError) as e:
+                    log.debug(f"Could not open deck to check serial: {e}")
+                    continue
             if deck.get_serial_number() == serial:
                 return deck
+        return None
 
     def on_resumed(self):
         log.info("Resume from suspend detected, reloading decks...")
@@ -282,33 +284,64 @@ class DeckManager:
 
 
 class FlatpakDeckDisconnectThread(threading.Thread):
+    """
+    Polls for deck disconnections under Flatpak where USB disconnect events
+    are not reliably delivered.
+    """
+    POLL_INTERVAL = 2  # seconds
+
     def __init__(self, deck_manager: DeckManager):
-        super().__init__(name="FlatpakDeckDisconnectThread")
+        super().__init__(name="FlatpakDeckDisconnectThread", daemon=True)
         self.deck_manager = deck_manager
 
     def run(self):
         while gl.threads_running:
-            time.sleep(2)
-            for controller in self.deck_manager.deck_controller:
-                if not controller.deck.connected():
-                    self.deck_manager.remove_controller(controller)
+            time.sleep(self.POLL_INTERVAL)
+            try:
+                # Create a copy of the list to safely iterate while potentially removing items
+                controllers_to_check = list(self.deck_manager.deck_controller)
+                for controller in controllers_to_check:
+                    if controller.deck is None:
+                        continue
+                    if not controller.deck.connected():
+                        GLib.idle_add(self._handle_disconnected_controller, controller)
+            except (RuntimeError, AttributeError) as e:
+                log.debug(f"Error checking deck connections: {e}")
+
+    def _handle_disconnected_controller(self, controller):
+        """Handle disconnected controller on the main thread."""
+        try:
+            if controller in self.deck_manager.deck_controller:
+                self.deck_manager.remove_controller(controller)
+                if hasattr(gl.app, 'main_win'):
                     gl.app.main_win.check_for_errors()
+        except (ValueError, AttributeError) as e:
+            log.debug(f"Error removing disconnected controller: {e}")
 
 class DetectResumeThread(threading.Thread):
+    """
+    Detects system suspend/resume by measuring elapsed time between iterations.
+    If more time passes than expected (sleep time + threshold), system was likely suspended.
+    """
+    SLEEP_INTERVAL = 2  # seconds between checks
+    RESUME_THRESHOLD = 5  # seconds - if elapsed time exceeds sleep + this, assume resume
+
     def __init__(self, deck_manager: DeckManager):
         super().__init__(name="DetectResumeThread")
         self.deck_manager = deck_manager
 
-        self.last_1 = time.time()
-        self.last_2 = time.time()
-
     def run(self):
+        last_check_time = time.time()
         while gl.threads_running:
-            self.last_1 = time.time()
-            if time.time() - self.last_1 >= 5 or time.time() - self.last_2 >= 5:
+            time.sleep(self.SLEEP_INTERVAL)
+
+            current_time = time.time()
+            elapsed = current_time - last_check_time
+
+            # If significantly more time passed than our sleep interval,
+            # the system was likely suspended and has now resumed
+            if elapsed >= self.SLEEP_INTERVAL + self.RESUME_THRESHOLD:
+                log.info(f"Resume detected: {elapsed:.1f}s elapsed (expected ~{self.SLEEP_INTERVAL}s)")
                 self.deck_manager.on_resumed()
-            self.last_2 = time.time()
-            if time.time() - self.last_1 >= 5 or time.time() - self.last_2 >= 5:
-                self.deck_manager.on_resumed()
-            
-            time.sleep(2)
+
+            last_check_time = current_time

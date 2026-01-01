@@ -188,13 +188,20 @@ class App(Adw.Application):
         # Force quit if normal quit is not possible
         timer = threading.Timer(6, self.force_quit)
         timer.name = "force_quit_timer"
-        timer.setDaemon(True)
+        timer.daemon = True
         timer.start()
 
-        for ctrl in gl.deck_manager.deck_controller:
-            ctrl.delete()
+        # Delete deck controllers (safe copy to avoid modification during iteration)
+        for ctrl in list(gl.deck_manager.deck_controller):
+            try:
+                ctrl.delete()
+            except Exception as e:
+                log.error(f"Error deleting deck controller: {e}")
 
-        gl.deck_manager.stop_usb_monitoring()
+        try:
+            gl.deck_manager.stop_usb_monitoring()
+        except Exception as e:
+            log.error(f"Error stopping USB monitoring: {e}")
 
         gl.plugin_manager.loop_daemon = False
 
@@ -205,13 +212,22 @@ class App(Adw.Application):
                     log.error(f"Thread {thread.name} did not exit in time")
 
         for child in multiprocessing.active_children():
-            child.terminate()
+            try:
+                child.terminate()
+            except Exception as e:
+                log.debug(f"Error terminating child process: {e}")
 
-        gl.tray_icon.stop()
+        try:
+            gl.tray_icon.stop()
+        except Exception as e:
+            log.debug(f"Error stopping tray icon: {e}")
 
         # Close all decks
-        gl.deck_manager.close_all()
-        # Stop timer
+        try:
+            gl.deck_manager.close_all()
+        except Exception as e:
+            log.error(f"Error closing decks: {e}")
+
         log.success("Stopped StreamController. Have a nice day!")
         log.stop()
         sys.exit(0)

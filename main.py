@@ -228,8 +228,8 @@ def reset_all_decks():
                 # Reset deck
                 usb.util.dispose_resources(device)
                 device.reset()
-        except:
-            log.error("Failed to reset deck, maybe it's already connected to another instance? Skipping...")
+        except (usb.core.USBError, OSError) as e:
+            log.error(f"Failed to reset deck: {e}. Maybe it's already connected to another instance? Skipping...")
 
 def quit_running():
     if gl.IS_MAC:
@@ -303,8 +303,8 @@ def handle_listing_commands():
                     try:
                         deck_type = getattr(device, 'deck_type', lambda: 'Unknown StreamDeck')()
                         print(f"  Product Name: {deck_type}")
-                    except:
-                        print(f"  Product Name: Unknown (permission issue)")
+                    except (OSError, IOError, AttributeError) as e:
+                        print(f"  Product Name: Unknown (permission issue: {e})")
                     
                     # Try to open device to get detailed info
                     device_opened = False

@@ -7,7 +7,6 @@ import threading
 # Import own modules
 from src.backend.PluginManager.ActionHolder import ActionHolder
 from src.backend.PluginManager.PluginBase import PluginBase
-from src.backend.DeckManagement.HelperMethods import get_last_dir
 from streamcontroller_plugin_tools import BackendBase
 
 import globals as gl
@@ -78,21 +77,6 @@ class PluginManager:
         for plugin in plugins.values():
             plugin_base = plugin["object"]
             self.action_index.update(plugin_base.action_holders)
-
-        return
-        plugins = self.get_plugins()
-        for plugin in plugins.keys():
-            if plugin in self.action_index.keys():
-                continue
-            for action_id in plugins[plugin]["object"].ACTIONS.keys():
-                if action_id is None:
-                    log.warning(f"Plugin {plugin} has an action with id None, skipping...")
-                    continue
-
-                path = plugins[plugin]["folder-path"]
-                # Remove everything except the last folder
-                path = get_last_dir(path)
-                self.action_index[action_id] = plugins[plugin]["object"].ACTIONS[action_id]
 
     def get_plugins(self, include_disabled: bool = False) -> list[PluginBase]:
         plugins = PluginBase.plugins

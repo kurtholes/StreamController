@@ -59,7 +59,8 @@ def setup_autostart_flatpak(enable: bool = True):
     def request_background_callback(portal, result, user_data):
         try:
             success = portal.request_background_finish(result)
-        except:
+        except GLib.Error as e:
+            log.debug(f"request_background_finish failed: {e}")
             success = False
         log.info(f"request_background success={success}")
         if not success:
@@ -80,8 +81,8 @@ def setup_autostart_flatpak(enable: bool = True):
             request_background_callback,
             None,  # user_data
         )
-    except:
-        log.error(f"request_background failed")
+    except GLib.Error as e:
+        log.error(f"request_background failed: {e}")
         setup_autostart_desktop_entry(enable)
 
 def setup_autostart_desktop_entry(enable: bool = True, native: bool = False):

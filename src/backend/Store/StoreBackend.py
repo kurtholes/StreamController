@@ -564,14 +564,16 @@ class StoreBackend:
     async def get_web_image(self, url: str, path: str, branch: str = "main") -> Image:
         try:
             result = await self.get_remote_file(url, path, branch, data_type="content")
-        except:
-            return
+        except (ConnectionError, TimeoutError, OSError) as e:
+            log.debug(f"Failed to fetch web image from {url}/{path}: {e}")
+            return None
         if isinstance(result, NoConnectionError):
             return result
         try:
             return Image.open(BytesIO(result))
-        except:
-            return
+        except (IOError, OSError) as e:
+            log.debug(f"Failed to open image from {url}/{path}: {e}")
+            return None
     
     async def get_stargazers(self, repo_url: str) -> int:
         "Deactivated for now because of rate limits"

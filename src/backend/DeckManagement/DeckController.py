@@ -1092,7 +1092,7 @@ class BackgroundVideo(BackgroundVideoCache):
         tiles =  self.get_tiles(self.active_frame)
         try:
             copied_tiles = [tile.copy() for tile in tiles]
-        except:
+        except (AttributeError, TypeError):
             copied_tiles = [None for _ in range(len(tiles))]
         return copied_tiles
 
@@ -2310,8 +2310,8 @@ class ControllerKey(ControllerInput):
         else:
             try:
                 self.deck_controller.get_own_key_grid().buttons[x][y].set_image(image)
-            except:
-                print(f"Failed to set ui key image for {self.identifier}")
+            except (AttributeError, IndexError, KeyError) as e:
+                print(f"Failed to set ui key image for {self.identifier}: {e}")
         
     def get_own_ui_key(self) -> KeyButton:
         x, y = ControllerKey.Index_To_Coords(self.deck_controller.deck, self.index)
