@@ -87,16 +87,18 @@ class Page:
 
     def save(self):
         self.file_access_semaphore.acquire()
-        # Make backup in case something goes wrong
-        self.make_backup()
+        try:
+            # Make backup in case something goes wrong
+            self.make_backup()
 
-        without_objects = self.get_without_action_objects()
-        # Make keys last element
-        for type in Input.KeyTypes:
-            self.move_key_to_end(without_objects, type)
-        with open(self.json_path, "w") as f:
-            json.dump(without_objects, f, indent=4)
-        self.file_access_semaphore.release()
+            without_objects = self.get_without_action_objects()
+            # Make keys last element
+            for type in Input.KeyTypes:
+                self.move_key_to_end(without_objects, type)
+            with open(self.json_path, "w") as f:
+                json.dump(without_objects, f, indent=4)
+        finally:
+            self.file_access_semaphore.release()
 
     def make_backup(self):
         os.makedirs(os.path.join(gl.DATA_PATH, "pages","backups"), exist_ok=True)
@@ -115,9 +117,9 @@ class Page:
         shutil.copy2(src_path, dst_path)
 
     def move_key_to_end(self, dictionary, key):
-        if key in self.dict:
-            value = self.dict.pop(key)
-            self.dict[key] = value
+        if key in dictionary:
+            value = dictionary.pop(key)
+            dictionary[key] = value
 
     def set_background(self, file_path):
         self.dict.setdefault("background", {})

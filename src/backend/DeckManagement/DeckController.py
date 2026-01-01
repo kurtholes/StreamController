@@ -93,11 +93,13 @@ class MediaPlayerSetTouchscreenImageTask:
             self.deck_controller.deck.set_touchscreen_image(self.native_image, x_pos=0, y_pos=0, width=touchscreen_size[0], height=touchscreen_size[1]) # Maybe avoid to always merge the dial images before applying it
             self.native_image = None
             del self.native_image
-            MediaPlayerSetTouchscreenImageTask.n_failed_in_row = 0
+            MediaPlayerSetTouchscreenImageTask.n_failed_in_row[self.deck_controller.serial_number()] = 0
         except StreamDeck.TransportError as e:
             log.error(f"Failed to set deck touchscreen image. Error: {e}")
-            MediaPlayerSetTouchscreenImageTask.n_failed_in_row += 1
-            if MediaPlayerSetTouchscreenImageTask.n_failed_in_row > 5:
+            serial = self.deck_controller.serial_number()
+            MediaPlayerSetTouchscreenImageTask.n_failed_in_row.setdefault(serial, 0)
+            MediaPlayerSetTouchscreenImageTask.n_failed_in_row[serial] += 1
+            if MediaPlayerSetTouchscreenImageTask.n_failed_in_row[serial] > 5:
                 log.debug(f"Failed to set touchscreen image for 5 times in a row for deck {self.deck_controller.serial_number()}. Removing controller")
                 
                 
@@ -129,8 +131,10 @@ class MediaPlayerSetImageTask:
             if beta_resume:
                 return
 
-            MediaPlayerSetImageTask.n_failed_in_row[self.deck_controller.serial_number()] += 1
-            if MediaPlayerSetImageTask.n_failed_in_row[self.deck_controller.serial_number()] > 5:
+            serial = self.deck_controller.serial_number()
+            MediaPlayerSetImageTask.n_failed_in_row.setdefault(serial, 0)
+            MediaPlayerSetImageTask.n_failed_in_row[serial] += 1
+            if MediaPlayerSetImageTask.n_failed_in_row[serial] > 5:
                 log.debug(f"Failed to set key_image for 5 times in a row for deck {self.deck_controller.serial_number()}. Removing controller")
                 
                 
@@ -154,6 +158,7 @@ class MediaPlayerThread(threading.Thread):
         self._stop = False
 
         self.tasks: list[MediaPlayerTask] = []
+        self.tasks_lock = threading.Lock()
         self.image_tasks = {}
         self.touchscreen_task = None
 
@@ -247,13 +252,14 @@ class MediaPlayerThread(threading.Thread):
             time.sleep(0.1)
 
     def add_task(self, method: callable, *args, **kwargs):
-        self.tasks.append(MediaPlayerTask(
-            deck_controller=self.deck_controller,
-            page=self.deck_controller.active_page,
-            _callable=method,
-            args=args,
-            kwargs=kwargs
-        ))
+        with self.tasks_lock:
+            self.tasks.append(MediaPlayerTask(
+                deck_controller=self.deck_controller,
+                page=self.deck_controller.active_page,
+                _callable=method,
+                args=args,
+                kwargs=kwargs
+            ))
 
     def add_touchscreen_task(self, native_image: bytes):
         self.touchscreen_task = MediaPlayerSetTouchscreenImageTask(
@@ -271,14 +277,13 @@ class MediaPlayerThread(threading.Thread):
         )
 
     def perform_media_player_tasks(self):
-        for task in self.tasks.copy():
+        with self.tasks_lock:
+            tasks_to_run = self.tasks.copy()
+            self.tasks.clear()
+
+        for task in tasks_to_run:
             if task.page is self.deck_controller.active_page:
                 task.run()
-
-            try:
-                self.tasks.remove(task)
-            except ValueError:
-                pass
 
         for key in list(self.image_tasks.keys()):
             try:

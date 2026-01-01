@@ -120,6 +120,9 @@ class BackgroundVideoCache:
         return tiles
     
     def create_full_deck_sized_image(self, frame: Image.Image) -> Image.Image:
+        key_width, key_height = self.key_size
+        spacing_x, spacing_y = self.spacing
+
         key_width *= self.key_layout[0]
         key_height *= self.key_layout[1]
 
